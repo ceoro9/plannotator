@@ -51,28 +51,6 @@ export async function activate(
   panelManager.setExtensionPath(context.extensionPath);
   const proxyPorts = new Map<vscode.WebviewPanel, number>();
 
-  const reviewStatus = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    102,
-  );
-  reviewStatus.text = "$(comment-discussion) Plannotator Review";
-  reviewStatus.tooltip = "Active Plannotator code review";
-  const sendStatus = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    101,
-  );
-  sendStatus.text = "$(send) Send Feedback";
-  sendStatus.command = "plannotator-webview.sendReviewFeedback";
-  sendStatus.tooltip = "Send Plannotator review feedback";
-  const approveStatus = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100,
-  );
-  approveStatus.text = "$(check) Approve";
-  approveStatus.command = "plannotator-webview.approveReview";
-  approveStatus.tooltip = "Approve the active Plannotator review";
-  context.subscriptions.push(reviewStatus, sendStatus, approveStatus);
-
   context.subscriptions.push(
     panelManager.onDidChangeActivePanel((panel) => {
       setActiveProxyPort(panel ? (proxyPorts.get(panel) ?? null) : null);
@@ -81,15 +59,6 @@ export async function activate(
         "plannotator.activeReview",
         !!panel,
       );
-      if (panel) {
-        reviewStatus.show();
-        sendStatus.show();
-        approveStatus.show();
-      } else {
-        reviewStatus.hide();
-        sendStatus.hide();
-        approveStatus.hide();
-      }
     }),
   );
 

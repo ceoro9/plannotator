@@ -164,8 +164,6 @@ export const ViewColumn = {
   Three: 3,
 };
 
-export const StatusBarAlignment = { Left: 1, Right: 2 };
-
 export const window = {
   registerUriHandler(_handler: unknown) {
     return { dispose() {} };
@@ -193,16 +191,6 @@ export const window = {
       error() {},
       debug() {},
       appendLine() {},
-      dispose() {},
-    };
-  },
-  createStatusBarItem(_alignment?: number, _priority?: number) {
-    return {
-      text: "",
-      tooltip: undefined as string | undefined,
-      command: undefined as string | undefined,
-      show() {},
-      hide() {},
       dispose() {},
     };
   },
