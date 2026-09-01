@@ -16,7 +16,10 @@ let activeProxyPort: number | null = null;
 let commentController: vscode.CommentController | null = null;
 let annotationDecorationType: vscode.TextEditorDecorationType | null = null;
 
-/** Map of CommentThread → server-side annotation id */
+/** All editor annotation threads, including drafts not yet sent to the server. */
+const annotationThreads = new Set<vscode.CommentThread>();
+
+/** Map of submitted CommentThread → server-side annotation id */
 const threadIds = new Map<vscode.CommentThread, string>();
 
 /** Map of file URI string → decorated ranges */
@@ -25,16 +28,15 @@ const decoratedRanges = new Map<string, vscode.Range[]>();
 // ── Public API ─────────────────────────────────────────────────────
 
 export function setActiveProxyPort(port: number | null): void {
+  if (activeProxyPort === port) return;
   activeProxyPort = port;
+  disposeAllThreads();
+  clearAllDecorations();
   if (port !== null) {
     createController();
-  } else {
-    disposeAllThreads();
-    clearAllDecorations();
-    if (commentController) {
-      commentController.dispose();
-      commentController = null;
-    }
+  } else if (commentController) {
+    commentController.dispose();
+    commentController = null;
   }
 }
 
@@ -128,9 +130,8 @@ export function registerEditorAnnotationCommand(
         );
       } catch (err) {
         log.error(`[editor-annotation] failed: ${err}`);
-        vscode.window.showErrorMessage(
-          "Plannotator: Failed to add annotation",
-        );
+        vscode.window.showErrorMessage("Plannotator: Failed to add annotation");
+        annotationThreads.delete(thread);
         thread.dispose();
       }
     },
@@ -161,6 +162,7 @@ export function registerEditorAnnotationCommand(
       if (thread.range) {
         removeDecoration(thread.uri, thread.range);
       }
+      annotationThreads.delete(thread);
       thread.dispose();
     },
   );
@@ -191,7 +193,12 @@ export function registerEditorAnnotationCommand(
         editor.selection.start,
         editor.selection.end,
       );
-      const thread = commentController!.createCommentThread(editor.document.uri, range, []);
+      const thread = commentController!.createCommentThread(
+        editor.document.uri,
+        range,
+        [],
+      );
+      annotationThreads.add(thread);
       thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
     },
   );
@@ -248,9 +255,7 @@ function removeDecoration(uri: vscode.Uri, range: vscode.Range): void {
   const ranges = decoratedRanges.get(key);
   if (!ranges) return;
 
-  const idx = ranges.findIndex(
-    (r) => r.isEqual(range),
-  );
+  const idx = ranges.findIndex((r) => r.isEqual(range));
   if (idx !== -1) ranges.splice(idx, 1);
   if (ranges.length === 0) decoratedRanges.delete(key);
 
@@ -278,9 +283,8 @@ function clearAllDecorations(): void {
 // ── Thread helpers ─────────────────────────────────────────────────
 
 function disposeAllThreads(): void {
-  for (const [thread] of threadIds) {
-    thread.dispose();
-  }
+  for (const thread of annotationThreads) thread.dispose();
+  annotationThreads.clear();
   threadIds.clear();
 }
 

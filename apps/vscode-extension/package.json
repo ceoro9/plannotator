@@ -48,6 +48,16 @@
         "command": "plannotator-webview.deleteEditorAnnotation",
         "title": "Delete Annotation",
         "icon": "$(trash)"
+      },
+      {
+        "command": "plannotator-webview.sendReviewFeedback",
+        "title": "Plannotator: Send Review Feedback",
+        "enablement": "plannotator.activeReview"
+      },
+      {
+        "command": "plannotator-webview.approveReview",
+        "title": "Plannotator: Approve Review",
+        "enablement": "plannotator.activeReview"
       }
     ],
     "keybindings": [

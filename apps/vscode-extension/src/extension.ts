@@ -4,8 +4,11 @@ import * as fs from "fs";
 import * as os from "os";
 import { createIpcServer } from "./ipc-server";
 import { createCookieProxy } from "./cookie-proxy";
-import { PanelManager } from "./panel-manager";
-import { setActiveProxyPort, registerEditorAnnotationCommand } from "./editor-annotations";
+import { PanelManager, type ReviewFinalizeAction } from "./panel-manager";
+import {
+  setActiveProxyPort,
+  registerEditorAnnotationCommand,
+} from "./editor-annotations";
 
 import { getPlannotatorDataDir } from "../../../packages/shared/data-dir";
 
@@ -41,9 +44,83 @@ const COOKIE_KEY = "plannotator-cookies";
 
 const log = vscode.window.createOutputChannel("Plannotator", { log: true });
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(
+  context: vscode.ExtensionContext,
+): Promise<void> {
   const panelManager = new PanelManager();
   panelManager.setExtensionPath(context.extensionPath);
+  const proxyPorts = new Map<vscode.WebviewPanel, number>();
+
+  const reviewStatus = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    102,
+  );
+  reviewStatus.text = "$(comment-discussion) Plannotator Review";
+  reviewStatus.tooltip = "Active Plannotator code review";
+  const sendStatus = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    101,
+  );
+  sendStatus.text = "$(send) Send Feedback";
+  sendStatus.command = "plannotator-webview.sendReviewFeedback";
+  sendStatus.tooltip = "Send Plannotator review feedback";
+  const approveStatus = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100,
+  );
+  approveStatus.text = "$(check) Approve";
+  approveStatus.command = "plannotator-webview.approveReview";
+  approveStatus.tooltip = "Approve the active Plannotator review";
+  context.subscriptions.push(reviewStatus, sendStatus, approveStatus);
+
+  context.subscriptions.push(
+    panelManager.onDidChangeActivePanel((panel) => {
+      setActiveProxyPort(panel ? (proxyPorts.get(panel) ?? null) : null);
+      void vscode.commands.executeCommand(
+        "setContext",
+        "plannotator.activeReview",
+        !!panel,
+      );
+      if (panel) {
+        reviewStatus.show();
+        sendStatus.show();
+        approveStatus.show();
+      } else {
+        reviewStatus.hide();
+        sendStatus.hide();
+        approveStatus.hide();
+      }
+    }),
+  );
+
+  const finalizeReview = async (
+    action: ReviewFinalizeAction,
+  ): Promise<void> => {
+    let result = await panelManager.finalizeActiveReview(action);
+    if (result.status === "confirmation-required") {
+      const choice = await vscode.window.showWarningMessage(
+        `Plannotator: ${result.annotationCount} annotation${result.annotationCount === 1 ? "" : "s"} won't be sent if you approve.`,
+        { modal: true },
+        "Approve Anyway",
+      );
+      if (choice !== "Approve Anyway") return;
+      result = await panelManager.finalizeActiveReview(action, true);
+    }
+    if (result.status === "success") {
+      vscode.window.showInformationMessage(
+        action === "approve"
+          ? "Plannotator: Review approved."
+          : "Plannotator: Review feedback sent.",
+      );
+      return;
+    }
+    const message =
+      result.status === "error"
+        ? result.message
+        : "Review approval was not confirmed.";
+    log.error(`[review-${action}] ${message}`);
+    vscode.window.showErrorMessage(`Plannotator: ${message}`);
+  };
 
   const openInPanel = async (url: string) => {
     log.info(`[open] received url: ${url}`);
@@ -66,6 +143,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
     const panel = await panelManager.open(proxy.rewriteUrl(url));
+    proxyPorts.set(panel, proxy.port);
     setActiveProxyPort(proxy.port);
 
     // Auto-close this specific panel when plannotator signals completion
@@ -74,7 +152,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Clean up proxy server and editor annotations state when the panel is closed
     panel.onDidDispose(() => {
       proxy.server.close();
-      setActiveProxyPort(null);
+      proxyPorts.delete(panel);
     });
 
     vscode.window.showInformationMessage("Plannotator panel opened");
@@ -94,10 +172,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Write IPC port to file-based registry so non-terminal processes (e.g. hooks)
   // can discover it without relying on environmentVariableCollection.
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+  const workspacePath =
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   if (workspacePath) {
     registerIpcPort(workspacePath, port);
-    context.subscriptions.push({ dispose: () => unregisterIpcPort(workspacePath) });
+    context.subscriptions.push({
+      dispose: () => unregisterIpcPort(workspacePath),
+    });
   }
 
   // Inject env vars into integrated terminals
@@ -138,6 +219,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   );
   context.subscriptions.push(openCommand);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "plannotator-webview.sendReviewFeedback",
+      () => finalizeReview("feedback"),
+    ),
+    vscode.commands.registerCommand("plannotator-webview.approveReview", () =>
+      finalizeReview("approve"),
+    ),
+  );
 
   // Register editor annotation command
   registerEditorAnnotationCommand(context, log);

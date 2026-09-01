@@ -3486,10 +3486,10 @@ const ReviewApp: React.FC = () => {
   }, [totalAnnotationCount, feedbackMarkdown]);
 
   // Send feedback to OpenCode via API
-  const handleSendFeedback = useCallback(async () => {
+  const handleSendFeedback = useCallback(async (): Promise<string | null> => {
     if (totalAnnotationCount === 0) {
       setShowNoAnnotationsDialog(true);
-      return;
+      return 'No annotations to send.';
     }
     setIsSendingFeedback(true);
     try {
@@ -3509,14 +3509,15 @@ const ReviewApp: React.FC = () => {
       });
       if (res.ok) {
         setSubmitted('feedback');
-      } else {
-        throw new Error('Failed to send');
+        return null;
       }
+      throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       console.error('Failed to send feedback:', err);
       setCopyFeedback('Failed to send');
       setTimeout(() => setCopyFeedback(null), 2000);
       setIsSendingFeedback(false);
+      return err instanceof Error ? err.message : 'Failed to send feedback.';
     }
   }, [totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
 
@@ -3537,7 +3538,7 @@ const ReviewApp: React.FC = () => {
   }, [getDraftGeneration]);
 
   // Approve without feedback (LGTM)
-  const handleApprove = useCallback(async () => {
+  const handleApprove = useCallback(async (): Promise<string | null> => {
     setIsApproving(true);
     try {
       const res = await fetch('/api/feedback', {
@@ -3552,16 +3553,63 @@ const ReviewApp: React.FC = () => {
       });
       if (res.ok) {
         setSubmitted('approved');
-      } else {
-        throw new Error('Failed to send');
+        return null;
       }
+      throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       console.error('Failed to approve:', err);
       setCopyFeedback('Failed to send');
       setTimeout(() => setCopyFeedback(null), 2000);
       setIsApproving(false);
+      return err instanceof Error ? err.message : 'Failed to approve review.';
     }
   }, [getDraftGeneration]);
+
+  useEffect(() => {
+    const onMessage = async (event: MessageEvent) => {
+      if (window.parent === window || event.source !== window.parent) return;
+      if (!event.data || typeof event.data !== 'object') return;
+      const message = event.data as {
+        type?: string;
+        token?: string;
+        id?: number;
+        action?: 'feedback' | 'approve';
+        force?: boolean;
+      };
+      if (
+        message.type !== 'plannotator-review-finalize' ||
+        typeof message.token !== 'string' ||
+        typeof message.id !== 'number'
+      ) return;
+
+      let result: { status: 'success' } | { status: 'confirmation-required'; annotationCount: number } | { status: 'error'; message: string };
+      if (platformMode) {
+        result = { status: 'error', message: 'VS Code review actions are only available for agent reviews.' };
+      } else if (submitted || isSendingFeedback || isApproving || isExiting) {
+        result = { status: 'error', message: 'A review submission is already in progress.' };
+      } else if (message.action === 'feedback') {
+        const error = await handleSendFeedback();
+        result = error ? { status: 'error', message: error } : { status: 'success' };
+      } else if (message.action === 'approve') {
+        if (totalAnnotationCount > 0 && !message.force) {
+          result = { status: 'confirmation-required', annotationCount: totalAnnotationCount };
+        } else {
+          const error = await handleApprove();
+          result = error ? { status: 'error', message: error } : { status: 'success' };
+        }
+      } else {
+        result = { status: 'error', message: 'Unknown review action.' };
+      }
+      window.parent.postMessage({
+        type: 'plannotator-review-finalize-result',
+        token: message.token,
+        id: message.id,
+        result,
+      }, event.origin);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [handleApprove, handleSendFeedback, isApproving, isExiting, isSendingFeedback, platformMode, submitted, totalAnnotationCount]);
 
   // Submit reviews to one or more PRs via /api/pr-action
   const handlePlatformAction = useCallback(async (action: 'approve' | 'comment', plan: ReviewSubmission, generalComment?: string) => {

@@ -21,7 +21,9 @@ describe("activate", () => {
   it("starts IPC server and injects port env var when config enabled", async () => {
     await activate(context as unknown as vscode.ExtensionContext);
 
-    const port = context.environmentVariableCollection.get("PLANNOTATOR_VSCODE_PORT");
+    const port = context.environmentVariableCollection.get(
+      "PLANNOTATOR_VSCODE_PORT",
+    );
     expect(port).toBeDefined();
     expect(Number(port)).toBeGreaterThan(0);
   });
@@ -38,9 +40,9 @@ describe("activate", () => {
 
     await activate(context as unknown as vscode.ExtensionContext);
 
-    expect(context.environmentVariableCollection.get("PLANNOTATOR_BROWSER")).toBe(
-      "/test/extension/path/bin/open-in-vscode",
-    );
+    expect(
+      context.environmentVariableCollection.get("PLANNOTATOR_BROWSER"),
+    ).toBe("/test/extension/path/bin/open-in-vscode");
   });
 
   it("prepends bin/ to PATH when injectBrowser is enabled", async () => {
@@ -86,11 +88,15 @@ describe("activate", () => {
 
     await activate(context as unknown as vscode.ExtensionContext);
 
-    expect(context.environmentVariableCollection.get("PLANNOTATOR_BROWSER")).toBeUndefined();
-    expect(context.environmentVariableCollection.get("PLANNOTATOR_VSCODE_PORT")).toBeUndefined();
+    expect(
+      context.environmentVariableCollection.get("PLANNOTATOR_BROWSER"),
+    ).toBeUndefined();
+    expect(
+      context.environmentVariableCollection.get("PLANNOTATOR_VSCODE_PORT"),
+    ).toBeUndefined();
   });
 
-  it("registers the openUrl command", async () => {
+  it("registers the review finalization commands", async () => {
     const spy = spyOn(vscode.commands, "registerCommand");
     spies.push(spy);
 
@@ -98,6 +104,14 @@ describe("activate", () => {
 
     expect(spy).toHaveBeenCalledWith(
       "plannotator-webview.openUrl",
+      expect.any(Function),
+    );
+    expect(spy).toHaveBeenCalledWith(
+      "plannotator-webview.sendReviewFeedback",
+      expect.any(Function),
+    );
+    expect(spy).toHaveBeenCalledWith(
+      "plannotator-webview.approveReview",
       expect.any(Function),
     );
   });
