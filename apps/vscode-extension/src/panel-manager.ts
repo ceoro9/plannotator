@@ -9,8 +9,7 @@ type ClipboardReadMessage = { type: "plannotator-clipboard-read"; id: number };
 type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage;
 
 export class PanelManager {
-  private panels = new Set<vscode.WebviewPanel>();
-  private panelTokens = new WeakMap<vscode.WebviewPanel, string>();
+  private panels: Set<vscode.WebviewPanel> = new Set();
   private activePanel: vscode.WebviewPanel | null = null;
   private extensionPath: string = "";
 
@@ -22,7 +21,6 @@ export class PanelManager {
     const resolved = await vscode.env.asExternalUri(vscode.Uri.parse(url));
     const resolvedUrl = resolved.toString();
 
-    const token = crypto.randomUUID();
     const panel = vscode.window.createWebviewPanel(
       "plannotator",
       "Plannotator",
@@ -33,7 +31,7 @@ export class PanelManager {
       path.join(this.extensionPath, "images", "icon.png"),
     );
     const origin = `${resolved.scheme}://${resolved.authority}`;
-    panel.webview.html = getHtml(resolvedUrl, origin, token);
+    panel.webview.html = getHtml(resolvedUrl, origin);
 
     const messageSub = panel.webview.onDidReceiveMessage(async (raw: unknown) => {
       const msg = raw as WebviewMessage;
@@ -46,7 +44,6 @@ export class PanelManager {
     });
 
     this.panels.add(panel);
-    this.panelTokens.set(panel, token);
     this.activePanel = panel;
     const viewStateSub = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) this.activePanel = panel;
@@ -66,19 +63,20 @@ export class PanelManager {
 
   async sendFeedback(): Promise<string | undefined> {
     const panel = this.activePanel;
-    const token = panel && this.panelTokens.get(panel);
-    if (!panel || !token) return "No active review session.";
-    if (!(await panel.webview.postMessage({ type: "plannotator-send-feedback", token }))) {
+    if (!panel) return "No active review session.";
+    if (!(await panel.webview.postMessage({ type: "plannotator-send-feedback" }))) {
       return "The active review panel is unavailable.";
     }
   }
 
   closeAll(): void {
-    for (const panel of this.panels) panel.dispose();
+    for (const panel of this.panels) {
+      panel.dispose();
+    }
   }
 }
 
-function getHtml(url: string, origin: string, token: string): string {
+function getHtml(url: string, origin: string): string {
   const themeScript = buildWrapperThemeScript();
   return `<!DOCTYPE html>
 <html lang="en">
@@ -100,18 +98,12 @@ function getHtml(url: string, origin: string, token: string): string {
       var ready = false;
       var reloads = 0;
       var vscodeApi = acquireVsCodeApi();
-      var feedbackToken = ${JSON.stringify(token)};
       window.addEventListener("message", function(e) {
         var d = e.data;
         if (d === "plannotator-ready") { ready = true; return; }
-        if (d && d.type === "plannotator-send-feedback" && d.token === feedbackToken) {
+        if (d && d.type === "plannotator-send-feedback") {
           var feedbackFrame = document.getElementById("pn-frame");
           if (feedbackFrame && feedbackFrame.contentWindow) feedbackFrame.contentWindow.postMessage(d, ${JSON.stringify(origin)});
-          return;
-        }
-        if (d && d.type === "plannotator-send-feedback-result" && d.token === feedbackToken) {
-          var resultFrame = document.getElementById("pn-frame");
-          if (resultFrame && e.source === resultFrame.contentWindow && e.origin === ${JSON.stringify(origin)}) vscodeApi.postMessage(d);
           return;
         }
         if (d && d.type === "plannotator-keydown") {
