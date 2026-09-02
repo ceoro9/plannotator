@@ -44,6 +44,16 @@ const log = vscode.window.createOutputChannel("Plannotator", { log: true });
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const panelManager = new PanelManager();
   panelManager.setExtensionPath(context.extensionPath);
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "plannotator-webview.sendReviewFeedback",
+      async () => {
+        const error = await panelManager.sendFeedback();
+        if (error) vscode.window.showErrorMessage(`Plannotator: ${error}`);
+        else vscode.window.showInformationMessage("Plannotator: Review feedback sent.");
+      },
+    ),
+  );
 
   const openInPanel = async (url: string) => {
     log.info(`[open] received url: ${url}`);
@@ -67,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const panel = await panelManager.open(proxy.rewriteUrl(url));
     setActiveProxyPort(proxy.port);
+    void vscode.commands.executeCommand("setContext", "plannotator.activeReview", true);
 
     // Auto-close this specific panel when plannotator signals completion
     proxy.events.on("close", () => panel.dispose());
@@ -75,6 +86,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     panel.onDidDispose(() => {
       proxy.server.close();
       setActiveProxyPort(null);
+      void vscode.commands.executeCommand(
+        "setContext",
+        "plannotator.activeReview",
+        panelManager.hasPanels(),
+      );
     });
 
     vscode.window.showInformationMessage("Plannotator panel opened");
