@@ -90,11 +90,6 @@
           "command": "plannotator-webview.sendReviewFeedback",
           "group": "navigation@1",
           "when": "view == workbench.panel.comments && plannotator.activeReview"
-        },
-        {
-          "command": "plannotator-webview.approveReview",
-          "group": "navigation@2",
-          "when": "view == workbench.panel.comments && plannotator.activeReview"
         }
       ],
       "comments/commentThread/context": [
