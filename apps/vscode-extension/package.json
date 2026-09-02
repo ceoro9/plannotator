@@ -48,6 +48,12 @@
         "command": "plannotator-webview.deleteEditorAnnotation",
         "title": "Delete Annotation",
         "icon": "$(trash)"
+      },
+      {
+        "command": "plannotator-webview.sendReviewFeedback",
+        "title": "Plannotator: Send Review Feedback",
+        "icon": "$(send)",
+        "enablement": "plannotator.activeReview"
       }
     ],
     "keybindings": [
@@ -71,6 +77,19 @@
           "command": "plannotator-webview.deleteEditorAnnotation",
           "group": "inline",
           "when": "commentController == plannotator && commentThread == plannotator-thread"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "plannotator-webview.sendReviewFeedback",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "plannotator-webview.sendReviewFeedback",
+          "group": "navigation@1",
+          "when": "view == workbench.panel.comments && plannotator.activeReview"
         }
       ],
       "comments/commentThread/context": [

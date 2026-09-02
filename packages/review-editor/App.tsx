@@ -3486,10 +3486,11 @@ const ReviewApp: React.FC = () => {
   }, [totalAnnotationCount, feedbackMarkdown]);
 
   // Send feedback to OpenCode via API
-  const handleSendFeedback = useCallback(async () => {
+  const handleSendFeedback = useCallback(async (): Promise<string | null> => {
+    if (submitted || isSendingFeedback) return 'A review submission is already in progress.';
     if (totalAnnotationCount === 0) {
       setShowNoAnnotationsDialog(true);
-      return;
+      return 'No annotations to send.';
     }
     setIsSendingFeedback(true);
     try {
@@ -3509,16 +3510,33 @@ const ReviewApp: React.FC = () => {
       });
       if (res.ok) {
         setSubmitted('feedback');
-      } else {
-        throw new Error('Failed to send');
+        return null;
       }
+      throw new Error('Failed to send');
     } catch (err) {
       console.error('Failed to send feedback:', err);
       setCopyFeedback('Failed to send');
       setTimeout(() => setCopyFeedback(null), 2000);
       setIsSendingFeedback(false);
+      return err instanceof Error ? err.message : 'Failed to send feedback.';
     }
-  }, [totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
+  }, [submitted, isSendingFeedback, totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
+
+  useEffect(() => {
+    const onMessage = async (event: MessageEvent) => {
+      if (window.parent === window || event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
+      const message = event.data as { type?: string; token?: string };
+      if (message.type !== 'plannotator-send-feedback' || typeof message.token !== 'string') return;
+      const error = await handleSendFeedback();
+      window.parent.postMessage({
+        type: 'plannotator-send-feedback-result',
+        token: message.token,
+        result: error ? { error } : {},
+      }, event.origin);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [handleSendFeedback]);
 
   // Exit review session without sending any feedback
   const handleExit = useCallback(async () => {

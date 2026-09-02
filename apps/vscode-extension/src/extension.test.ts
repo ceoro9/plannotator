@@ -90,7 +90,7 @@ describe("activate", () => {
     expect(context.environmentVariableCollection.get("PLANNOTATOR_VSCODE_PORT")).toBeUndefined();
   });
 
-  it("registers the openUrl command", async () => {
+  it("registers the openUrl and review feedback commands", async () => {
     const spy = spyOn(vscode.commands, "registerCommand");
     spies.push(spy);
 
@@ -98,6 +98,10 @@ describe("activate", () => {
 
     expect(spy).toHaveBeenCalledWith(
       "plannotator-webview.openUrl",
+      expect.any(Function),
+    );
+    expect(spy).toHaveBeenCalledWith(
+      "plannotator-webview.sendReviewFeedback",
       expect.any(Function),
     );
   });
