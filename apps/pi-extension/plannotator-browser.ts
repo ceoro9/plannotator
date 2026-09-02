@@ -75,6 +75,7 @@ type CodeReviewOptions = {
 	prUrl?: string;
 	vcsType?: VcsSelection;
 	useLocal?: boolean;
+	openReviewUrl?: (url: string) => Promise<void>;
 };
 
 type CodeReviewDecision = {
@@ -240,6 +241,7 @@ export function startBrowserDecisionSession<T>(
 	ctx: ExtensionContext,
 	waitForResult: () => Promise<T>,
 	signal?: AbortSignal,
+	skipBrowserLaunch = false,
 ): BrowserDecisionSession<T> {
 	let stopped = false;
 	let stopReject: ((err: Error) => void) | undefined;
@@ -259,15 +261,17 @@ export function startBrowserDecisionSession<T>(
 		stop();
 	} else {
 		signal?.addEventListener("abort", stop, { once: true });
-		// Fire-and-forget so the caller's turn is not blocked on a browser launch.
-		// Nothing may escape: an unhandled rejection here (a launcher that failed,
-		// or a `ctx` invalidated by a session replacement while the browser was
-		// opening) is an uncaught error that kills the whole pi process.
-		void openBrowserForServer(server.url, ctx).catch((err: unknown) => {
-			console.error(
-				`Plannotator: could not announce the browser URL ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		});
+		if (!skipBrowserLaunch) {
+			// Fire-and-forget so the caller's turn is not blocked on a browser launch.
+			// Nothing may escape: an unhandled rejection here (a launcher that failed,
+			// or a `ctx` invalidated by a session replacement while the browser was
+			// opening) is an uncaught error that kills the whole pi process.
+			void openBrowserForServer(server.url, ctx).catch((err: unknown) => {
+				console.error(
+					`Plannotator: could not announce the browser URL ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			});
+		}
 	}
 
 	return {
@@ -623,7 +627,22 @@ async function createCodeReviewBrowserSession(
 		onCleanup: worktreeCleanup,
 	}));
 
-	return startBrowserDecisionSession(server, ctx, server.waitForDecision);
+	const session = startBrowserDecisionSession(
+		server,
+		ctx,
+		server.waitForDecision,
+		undefined,
+		Boolean(options.openReviewUrl),
+	);
+	if (options.openReviewUrl) {
+		try {
+			await options.openReviewUrl(server.url);
+		} catch (error) {
+			session.stop();
+			throw error;
+		}
+	}
+	return session;
 }
 
 export async function openMarkdownAnnotation(
