@@ -63,6 +63,7 @@ describe("Pi extension startup boundary", () => {
 
 		expect(Array.isArray(manifest.files)).toBe(true);
 		expect(manifest.files).toContain("plannotator-browser-runtime.ts");
+		expect(manifest.files).toContain("vscode-ipc.ts");
 		expect(manifest.files).toContain("todo-providers/");
 	});
 

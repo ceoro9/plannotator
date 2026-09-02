@@ -90,6 +90,22 @@ describe("activate", () => {
     expect(context.environmentVariableCollection.get("PLANNOTATOR_VSCODE_PORT")).toBeUndefined();
   });
 
+  it("focuses the VS Code window for a focused IPC review", async () => {
+    const spy = spyOn(vscode.commands, "executeCommand");
+    spies.push(spy);
+    await activate(context as unknown as vscode.ExtensionContext);
+
+    const port = context.environmentVariableCollection.get(
+      "PLANNOTATOR_VSCODE_PORT",
+    );
+    const response = await fetch(
+      `http://127.0.0.1:${port}/open?url=${encodeURIComponent("http://localhost:3000")}&focus=1`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(spy).toHaveBeenCalledWith("workbench.action.focusWindow");
+  });
+
   it("registers the openUrl command", async () => {
     const spy = spyOn(vscode.commands, "registerCommand");
     spies.push(spy);

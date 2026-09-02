@@ -634,9 +634,10 @@ export default function plannotator(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("plannotator-review", {
-		description: "Open interactive code review for current changes or a PR URL; pass --git or --gitbutler to force that provider",
-		handler: async (args, ctx) => {
+	async function openCodeReview(
+		args: string,
+		ctx: ExtensionContext,
+	): Promise<void> {
 			if (!hasReviewBrowserHtml()) {
 				ctx.ui.notify(
 					"Code review UI not available. Run 'bun run build' in the pi-extension directory.",
@@ -655,6 +656,9 @@ export default function plannotator(pi: ExtensionAPI): void {
 					prUrl: reviewArgs.prUrl,
 					vcsType: reviewArgs.vcsType,
 					useLocal: reviewArgs.useLocal,
+					...(reviewArgs.vscode
+						? { openReviewUrl: (url: string) => import("./vscode-ipc.ts").then(({ openReviewInVSCode }) => openReviewInVSCode(ctx.cwd, url)) }
+						: {}),
 				});
 				ctx.ui.notify(sessionOpenedMessage("Code review opened", session.url), "info");
 				void session
@@ -710,7 +714,11 @@ export default function plannotator(pi: ExtensionAPI): void {
 					"error",
 				);
 			}
-		},
+	}
+
+	pi.registerCommand("plannotator-review", {
+		description: "Open interactive code review for current changes or a PR URL; add vscode to open it in VS Code",
+		handler: (args, ctx) => openCodeReview(args ?? "", ctx),
 	});
 
 	pi.registerCommand("plannotator-annotate", {

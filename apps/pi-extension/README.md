@@ -205,6 +205,8 @@ Use these inside `instructions` strings. They render once, when the phase is ent
 
 Run `/plannotator-review` to open your current VCS changes in the code review UI. Annotate specific lines, switch between the modes supported by the detected Git, GitButler, or JJ provider, and submit feedback that gets sent to the agent. Pass `--git` or `--gitbutler` to force that provider; GitButler requires `but` 0.21.0 or newer on `PATH`.
 
+Run `/plannotator-review vscode` for the same review lifecycle inside the Plannotator VS Code window registered for the current Git worktree. It matches the canonical worktree path exactly, opens the review panel, and raises that VS Code window. If the worktree has no live registration, it opens that worktree in VS Code and waits for the Plannotator extension to register it. This mode never routes to another window or falls back to a browser.
+
 ### Shared Plannotator event API
 
 Plannotator also listens on the shared `plannotator:request` event channel so other extensions can reuse the same browser review flows without importing Plannotator internals.
@@ -289,7 +291,7 @@ During execution, the agent marks completed steps with `[DONE:n]` markers. Progr
 | Command | Description |
 |---------|-------------|
 | `/plannotator-plan-mode` | Toggle plan mode. The agent writes a markdown plan file anywhere in the working directory and submits its path |
-| `/plannotator-review` | Open code review UI for current changes |
+| `/plannotator-review` | Open code review UI for current changes; add `vscode` to target the current worktree's VS Code window |
 | `/plannotator-annotate <file>` | Open markdown file in annotation UI |
 | `/plannotator-last` | Annotate the last assistant message |
 

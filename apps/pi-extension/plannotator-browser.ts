@@ -64,6 +64,7 @@ export interface PlanReviewDecision {
 
 export interface BrowserDecisionSession<T> {
 	url: string;
+	opened: Promise<void>;
 	waitForDecision: () => Promise<T>;
 	stop: () => void;
 }
@@ -75,6 +76,7 @@ type CodeReviewOptions = {
 	prUrl?: string;
 	vcsType?: VcsSelection;
 	useLocal?: boolean;
+	openReviewUrl?: (url: string) => Promise<void>;
 };
 
 type CodeReviewDecision = {
@@ -178,7 +180,15 @@ export async function startServerWithSelfPreemption<T>(
 	}
 }
 
-async function openBrowserForServer(serverUrl: string, ctx: ExtensionContext): Promise<void> {
+async function openBrowserForServer(
+	serverUrl: string,
+	ctx: ExtensionContext,
+	openReviewUrl?: (url: string) => Promise<void>,
+): Promise<void> {
+	if (openReviewUrl) {
+		await openReviewUrl(serverUrl);
+		return;
+	}
 	const browserResult = await openBrowser(serverUrl);
 	if (isRemoteSession()) {
 		ctx.ui.notify(`[Plannotator] ${serverUrl}`, "info");
@@ -240,6 +250,7 @@ export function startBrowserDecisionSession<T>(
 	ctx: ExtensionContext,
 	waitForResult: () => Promise<T>,
 	signal?: AbortSignal,
+	openReviewUrl?: (url: string) => Promise<void>,
 ): BrowserDecisionSession<T> {
 	let stopped = false;
 	let stopReject: ((err: Error) => void) | undefined;
@@ -259,19 +270,21 @@ export function startBrowserDecisionSession<T>(
 		stop();
 	} else {
 		signal?.addEventListener("abort", stop, { once: true });
-		// Fire-and-forget so the caller's turn is not blocked on a browser launch.
-		// Nothing may escape: an unhandled rejection here (a launcher that failed,
-		// or a `ctx` invalidated by a session replacement while the browser was
-		// opening) is an uncaught error that kills the whole pi process.
-		void openBrowserForServer(server.url, ctx).catch((err: unknown) => {
-			console.error(
-				`Plannotator: could not announce the browser URL ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		});
 	}
+	const opened = signal?.aborted
+		? Promise.resolve()
+		: openBrowserForServer(server.url, ctx, openReviewUrl);
+	// Normal browser sessions intentionally do not wait for their launcher. Keep
+	// its rejection handled, while /vscode awaits `opened` before reporting success.
+	void opened.catch((err: unknown) => {
+		console.error(
+			`Plannotator: could not announce the browser URL ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	});
 
 	return {
 		url: server.url,
+		opened,
 		waitForDecision: () => {
 			if (decisionPromise) return decisionPromise;
 			if (stopped) return Promise.reject(createStoppedError());
@@ -623,7 +636,22 @@ async function createCodeReviewBrowserSession(
 		onCleanup: worktreeCleanup,
 	}));
 
-	return startBrowserDecisionSession(server, ctx, server.waitForDecision);
+	const session = startBrowserDecisionSession(
+		server,
+		ctx,
+		server.waitForDecision,
+		undefined,
+		options.openReviewUrl,
+	);
+	if (options.openReviewUrl) {
+		try {
+			await session.opened;
+		} catch (error) {
+			session.stop();
+			throw error;
+		}
+	}
+	return session;
 }
 
 export async function openMarkdownAnnotation(
