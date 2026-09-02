@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { createIpcServer } from "./ipc-server";
+import { IPC_PROBE_PATH, IPC_PROBE_RESPONSE, createIpcServer } from "./ipc-server";
 import type * as http from "http";
 
 describe("createIpcServer", () => {
@@ -11,15 +11,27 @@ describe("createIpcServer", () => {
   });
 
   it("starts on a random port", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
     expect(result.port).toBeGreaterThan(0);
   });
 
-  it("calls onUrl for GET /open?url=...", async () => {
-    const onUrl = mock((_url: string) => {});
+  it("identifies itself through the probe endpoint", async () => {
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
+    const result = await createIpcServer(onUrl);
+    server = result.server;
+
+    const res = await fetch(`http://127.0.0.1:${result.port}${IPC_PROBE_PATH}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(IPC_PROBE_RESPONSE);
+    expect(onUrl).not.toHaveBeenCalled();
+  });
+
+  it("calls onOpen for GET /open?url=...", async () => {
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -28,11 +40,24 @@ describe("createIpcServer", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(onUrl).toHaveBeenCalledWith("http://localhost:3000");
+    expect(onUrl).toHaveBeenCalledWith("http://localhost:3000", false);
+  });
+
+  it("focuses only when requested", async () => {
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
+    const result = await createIpcServer(onUrl);
+    server = result.server;
+
+    const res = await fetch(
+      `http://127.0.0.1:${result.port}/open?url=${encodeURIComponent("http://localhost:3000")}&focus=1`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(onUrl).toHaveBeenCalledWith("http://localhost:3000", true);
   });
 
   it("returns 404 for unknown paths", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -43,7 +68,7 @@ describe("createIpcServer", () => {
   });
 
   it("returns 404 when url param is missing", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -54,7 +79,7 @@ describe("createIpcServer", () => {
   });
 
   it("handles URLs with query parameters", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string, _focus: boolean) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -64,6 +89,6 @@ describe("createIpcServer", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(onUrl).toHaveBeenCalledWith(target);
+    expect(onUrl).toHaveBeenCalledWith(target, false);
   });
 });

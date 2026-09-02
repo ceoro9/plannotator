@@ -62,6 +62,15 @@ describe("parseReviewArgs", () => {
       .toBe("https://github.com/acme/repo/pull/12");
   });
 
+  test("routes a vscode review through the VS Code opener", () => {
+    expect(parseReviewArgs("vscode --git")).toEqual({
+      prUrl: undefined,
+      vcsType: "git",
+      useLocal: true,
+      vscode: true,
+    });
+  });
+
   test("keeps non-url positional input as local review mode", () => {
     expect(parseReviewArgs("--git not-a-url")).toEqual({
       prUrl: undefined,

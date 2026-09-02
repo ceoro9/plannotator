@@ -130,6 +130,12 @@ function createRuntime(initialTools: string[]) {
 }
 
 describe("Plannotator phase tool ownership", () => {
+	test("registers only the plannotator review command", () => {
+		const runtime = createRuntime([]);
+		expect(runtime.commands.get("plannotator-review")).toBeDefined();
+		expect(runtime.commands.get("vscode")).toBeUndefined();
+	});
+
 	test("leaving planning removes only tools Plannotator added", async () => {
 		const cwd = makeWorkspace();
 		const runtime = createRuntime([

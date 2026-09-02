@@ -130,23 +130,32 @@ export async function activate(
   // Start local IPC server to receive URLs from the router script.
   // Reuse the last port so restored terminals still have a valid PLANNOTATOR_VSCODE_PORT.
   const lastPort = context.workspaceState.get<number>("ipcPort");
-  const { server, port } = await createIpcServer((url) => {
-    openInPanel(url).catch((err) => {
-      log.error(`[open] failed: ${err}`);
-      vscode.window.showErrorMessage(`Plannotator: ${err}`);
-    });
+  const { server, port } = await createIpcServer(async (url, focus) => {
+    await openInPanel(url);
+    if (focus) await vscode.commands.executeCommand("workbench.action.focusWindow");
   }, lastPort);
   context.workspaceState.update("ipcPort", port);
   context.subscriptions.push({ dispose: () => server.close() });
 
   // Write IPC port to file-based registry so non-terminal processes (e.g. hooks)
   // can discover it without relying on environmentVariableCollection.
-  const workspacePath =
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
-  if (workspacePath) {
+  const workspacePaths = (vscode.workspace.workspaceFolders ?? [])
+    .map(({ uri }) => {
+      try {
+        return fs.realpathSync(uri.fsPath);
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((workspacePath): workspacePath is string => !!workspacePath);
+  for (const workspacePath of workspacePaths) {
     registerIpcPort(workspacePath, port);
+  }
+  if (workspacePaths.length > 0) {
     context.subscriptions.push({
-      dispose: () => unregisterIpcPort(workspacePath),
+      dispose: () => {
+        for (const workspacePath of workspacePaths) unregisterIpcPort(workspacePath);
+      },
     });
   }
 
