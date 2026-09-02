@@ -9,7 +9,8 @@ type ClipboardReadMessage = { type: "plannotator-clipboard-read"; id: number };
 type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage;
 
 export class PanelManager {
-  private panels = new Map<vscode.WebviewPanel, string>();
+  private panels = new Set<vscode.WebviewPanel>();
+  private panelTokens = new WeakMap<vscode.WebviewPanel, string>();
   private activePanel: vscode.WebviewPanel | null = null;
   private extensionPath: string = "";
 
@@ -44,7 +45,8 @@ export class PanelManager {
       }
     });
 
-    this.panels.set(panel, token);
+    this.panels.add(panel);
+    this.panelTokens.set(panel, token);
     this.activePanel = panel;
     const viewStateSub = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) this.activePanel = panel;
@@ -53,7 +55,7 @@ export class PanelManager {
       messageSub.dispose();
       viewStateSub.dispose();
       this.panels.delete(panel);
-      if (this.activePanel === panel) this.activePanel = this.panels.keys().next().value ?? null;
+      if (this.activePanel === panel) this.activePanel = this.panels.values().next().value ?? null;
     });
     return panel;
   }
@@ -64,7 +66,7 @@ export class PanelManager {
 
   async sendFeedback(): Promise<string | undefined> {
     const panel = this.activePanel;
-    const token = panel && this.panels.get(panel);
+    const token = panel && this.panelTokens.get(panel);
     if (!panel || !token) return "No active review session.";
     if (!(await panel.webview.postMessage({ type: "plannotator-send-feedback", token }))) {
       return "The active review panel is unavailable.";
@@ -72,7 +74,7 @@ export class PanelManager {
   }
 
   closeAll(): void {
-    for (const panel of this.panels.keys()) panel.dispose();
+    for (const panel of this.panels) panel.dispose();
   }
 }
 
