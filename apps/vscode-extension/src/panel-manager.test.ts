@@ -20,14 +20,12 @@ describe("PanelManager", () => {
   function stubWebviewPanel(): {
     html: string;
     sent: unknown[];
-    emitMessage: (message: unknown) => void;
     emitViewState: (active: boolean) => void;
     dispose: () => void;
   } {
     const captured = {
       html: "",
       sent: [] as unknown[],
-      emitMessage: (_message: unknown) => {},
       emitViewState: (_active: boolean) => {},
       dispose: () => {},
     };
@@ -35,14 +33,11 @@ describe("PanelManager", () => {
     spy.mockImplementation((() => {
       let disposeListener: (() => void) | null = null;
       let viewStateListener: ((event: { webviewPanel: vscode.WebviewPanel }) => void) | null = null;
-      let messageListener: ((message: unknown) => void) | null = null;
-      captured.emitMessage = (message) => messageListener?.(message);
       const panel = {
         webview: {
           get html() { return captured.html; },
           set html(v: string) { captured.html = v; },
-          onDidReceiveMessage(listener: (message: unknown) => void) {
-            messageListener = listener;
+          onDidReceiveMessage(_listener: (message: unknown) => void) {
             return { dispose() {} };
           },
           postMessage(message: unknown) {
@@ -105,15 +100,8 @@ describe("PanelManager", () => {
     const captured = stubWebviewPanel();
     await manager.open("http://127.0.0.1:9999/review");
 
-    const result = manager.sendFeedback();
-    const request = captured.sent[0] as { token: string };
-    captured.emitMessage({
-      type: "plannotator-send-feedback-result",
-      token: request.token,
-      result: {},
-    });
-
-    expect(await result).toBeUndefined();
+    await expect(manager.sendFeedback()).resolves.toBeUndefined();
+    expect(captured.sent).toHaveLength(1);
   });
 
   it("targets the panel the user last focused", async () => {
@@ -123,16 +111,9 @@ describe("PanelManager", () => {
     await manager.open("http://127.0.0.1:9999/second");
 
     first.emitViewState(true);
-    const result = manager.sendFeedback();
-    const request = first.sent[0] as { token: string };
-    first.emitMessage({
-      type: "plannotator-send-feedback-result",
-      token: request.token,
-      result: {},
-    });
+    await expect(manager.sendFeedback()).resolves.toBeUndefined();
 
     expect(second.sent).toHaveLength(0);
-    expect(await result).toBeUndefined();
   });
 
   it("falls back to another open review when the active panel closes", async () => {
@@ -142,15 +123,7 @@ describe("PanelManager", () => {
     await manager.open("http://127.0.0.1:9999/second");
 
     second.dispose();
-    const result = manager.sendFeedback();
-    const request = first.sent[0] as { token: string };
-    first.emitMessage({
-      type: "plannotator-send-feedback-result",
-      token: request.token,
-      result: {},
-    });
-
-    expect(await result).toBeUndefined();
+    await expect(manager.sendFeedback()).resolves.toBeUndefined();
   });
 
   it("uses asExternalUri resolved URL in iframe and CSP", async () => {

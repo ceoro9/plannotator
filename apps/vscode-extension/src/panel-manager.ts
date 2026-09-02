@@ -6,20 +6,11 @@ import { buildWrapperThemeScript } from "./vscode-theme";
 // bridge injected in cookie-proxy.ts).
 type ClipboardWriteMessage = { type: "plannotator-clipboard-write"; text: string };
 type ClipboardReadMessage = { type: "plannotator-clipboard-read"; id: number };
-type SendFeedbackResultMessage = {
-  type: "plannotator-send-feedback-result";
-  token: string;
-  result: { error?: string };
-};
-type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage | SendFeedbackResultMessage;
+type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage;
 
 export class PanelManager {
-  private panels: Set<vscode.WebviewPanel> = new Set();
-  private panelTokens = new Map<vscode.WebviewPanel, string>();
+  private panels = new Map<vscode.WebviewPanel, string>();
   private activePanel: vscode.WebviewPanel | null = null;
-  private pendingPanel: vscode.WebviewPanel | null = null;
-  private pendingResolve: ((error?: string) => void) | null = null;
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private extensionPath: string = "";
 
   setExtensionPath(p: string): void {
@@ -50,21 +41,10 @@ export class PanelManager {
       } else if (msg.type === "plannotator-clipboard-read") {
         const text = await vscode.env.clipboard.readText();
         panel.webview.postMessage({ type: "plannotator-clipboard-data", id: msg.id, text });
-      } else if (
-        msg.type === "plannotator-send-feedback-result" &&
-        msg.token === token &&
-        this.pendingPanel === panel
-      ) {
-        clearTimeout(this.pendingTimer!);
-        this.pendingTimer = null;
-        this.pendingPanel = null;
-        this.pendingResolve?.(msg.result.error);
-        this.pendingResolve = null;
       }
     });
 
-    this.panels.add(panel);
-    this.panelTokens.set(panel, token);
+    this.panels.set(panel, token);
     this.activePanel = panel;
     const viewStateSub = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) this.activePanel = panel;
@@ -73,15 +53,7 @@ export class PanelManager {
       messageSub.dispose();
       viewStateSub.dispose();
       this.panels.delete(panel);
-      this.panelTokens.delete(panel);
-      if (this.pendingPanel === panel) {
-        clearTimeout(this.pendingTimer!);
-        this.pendingTimer = null;
-        this.pendingPanel = null;
-        this.pendingResolve?.("The review panel closed before feedback was sent.");
-        this.pendingResolve = null;
-      }
-      if (this.activePanel === panel) this.activePanel = this.panels.values().next().value ?? null;
+      if (this.activePanel === panel) this.activePanel = this.panels.keys().next().value ?? null;
     });
     return panel;
   }
@@ -92,36 +64,15 @@ export class PanelManager {
 
   async sendFeedback(): Promise<string | undefined> {
     const panel = this.activePanel;
-    const token = panel && this.panelTokens.get(panel);
-    if (!panel || !token || !this.panels.has(panel)) {
-      return "No active review session.";
-    }
-    if (this.pendingPanel) return "A review submission is already in progress.";
-
-    const result = new Promise<string | undefined>((resolve) => {
-      this.pendingPanel = panel;
-      this.pendingResolve = resolve;
-      this.pendingTimer = setTimeout(() => {
-        this.pendingPanel = null;
-        this.pendingResolve = null;
-        this.pendingTimer = null;
-        resolve("The review panel did not respond.");
-      }, 15_000);
-    });
+    const token = panel && this.panels.get(panel);
+    if (!panel || !token) return "No active review session.";
     if (!(await panel.webview.postMessage({ type: "plannotator-send-feedback", token }))) {
-      clearTimeout(this.pendingTimer!);
-      this.pendingTimer = null;
-      this.pendingPanel = null;
-      this.pendingResolve = null;
       return "The active review panel is unavailable.";
     }
-    return result;
   }
 
   closeAll(): void {
-    for (const panel of this.panels) {
-      panel.dispose();
-    }
+    for (const panel of this.panels.keys()) panel.dispose();
   }
 }
 
