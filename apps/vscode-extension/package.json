@@ -79,12 +79,6 @@
           "when": "commentController == plannotator && commentThread == plannotator-thread"
         }
       ],
-      "commandPalette": [
-        {
-          "command": "plannotator-webview.sendReviewFeedback",
-          "when": "false"
-        }
-      ],
       "view/title": [
         {
           "command": "plannotator-webview.sendReviewFeedback",

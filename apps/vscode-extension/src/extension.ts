@@ -50,7 +50,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async () => {
         const error = await panelManager.sendFeedback();
         if (error) vscode.window.showErrorMessage(`Plannotator: ${error}`);
-        else vscode.window.showInformationMessage("Plannotator: Review feedback sent.");
       },
     ),
   );
