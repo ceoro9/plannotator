@@ -3486,11 +3486,10 @@ const ReviewApp: React.FC = () => {
   }, [totalAnnotationCount, feedbackMarkdown]);
 
   // Send feedback to OpenCode via API
-  const handleSendFeedback = useCallback(async (): Promise<string | null> => {
-    if (submitted || isSendingFeedback) return 'A review submission is already in progress.';
+  const handleSendFeedback = useCallback(async () => {
     if (totalAnnotationCount === 0) {
       setShowNoAnnotationsDialog(true);
-      return 'No annotations to send.';
+      return;
     }
     setIsSendingFeedback(true);
     try {
@@ -3510,29 +3509,21 @@ const ReviewApp: React.FC = () => {
       });
       if (res.ok) {
         setSubmitted('feedback');
-        return null;
+      } else {
+        throw new Error('Failed to send');
       }
-      throw new Error('Failed to send');
     } catch (err) {
       console.error('Failed to send feedback:', err);
       setCopyFeedback('Failed to send');
       setTimeout(() => setCopyFeedback(null), 2000);
       setIsSendingFeedback(false);
-      return err instanceof Error ? err.message : 'Failed to send feedback.';
     }
-  }, [submitted, isSendingFeedback, totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
+  }, [totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
 
   useEffect(() => {
-    const onMessage = async (event: MessageEvent) => {
-      if (window.parent === window || event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
-      const message = event.data as { type?: string; token?: string };
-      if (message.type !== 'plannotator-send-feedback' || typeof message.token !== 'string') return;
-      const error = await handleSendFeedback();
-      window.parent.postMessage({
-        type: 'plannotator-send-feedback-result',
-        token: message.token,
-        result: error ? { error } : {},
-      }, event.origin);
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.data?.type !== 'plannotator-send-feedback') return;
+      void handleSendFeedback();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
