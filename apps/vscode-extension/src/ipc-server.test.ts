@@ -43,21 +43,6 @@ describe("createIpcServer", () => {
     expect(onUrl).toHaveBeenCalledWith("http://localhost:3000");
   });
 
-  it("focuses only when requested", async () => {
-    const onUrl = mock(async (_url: string) => {});
-    const onFocus = mock(async () => {});
-    const result = await createIpcServer(onUrl, undefined, onFocus);
-    server = result.server;
-
-    const res = await fetch(
-      `http://127.0.0.1:${result.port}/open?url=${encodeURIComponent("http://localhost:3000")}&focus=1`,
-    );
-
-    expect(res.status).toBe(200);
-    expect(onUrl).toHaveBeenCalledWith("http://localhost:3000");
-    expect(onFocus).toHaveBeenCalledTimes(1);
-  });
-
   it("returns 404 for unknown paths", async () => {
     const onUrl = mock(async (_url: string) => {});
     const result = await createIpcServer(onUrl);

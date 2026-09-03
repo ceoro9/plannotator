@@ -91,7 +91,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
     },
     lastPort,
-    () => { void vscode.commands.executeCommand("workbench.action.focusWindow"); },
   );
   context.workspaceState.update("ipcPort", port);
   context.subscriptions.push({ dispose: () => server.close() });

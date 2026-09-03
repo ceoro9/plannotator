@@ -90,7 +90,6 @@ export async function openReviewInVSCode(
 	const port = await resolveEndpoint(worktree);
 	const request = new URL("/open", `http://127.0.0.1:${port}`);
 	request.searchParams.set("url", reviewUrl);
-	request.searchParams.set("focus", "1");
 	try {
 		const response = await fetch(request, { signal: AbortSignal.timeout(3_000) });
 		if (!response.ok)

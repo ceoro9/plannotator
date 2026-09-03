@@ -80,6 +80,5 @@ describe("openReviewInVSCode", () => {
 
 		expect(request?.pathname).toBe("/open");
 		expect(request?.searchParams.get("url")).toBe("http://127.0.0.1:3000?review=1");
-		expect(request?.searchParams.get("focus")).toBe("1");
 	});
 });

@@ -10,7 +10,6 @@ export const IPC_PROBE_RESPONSE = "plannotator-vscode-ipc";
 export function createIpcServer(
   onUrl: (url: string) => void,
   preferredPort?: number,
-  onFocus?: () => void,
 ): Promise<{ server: http.Server; port: number }> {
   const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
     const parsed = new globalThis.URL(req.url!, "http://localhost");
@@ -23,7 +22,6 @@ export function createIpcServer(
     }
     if (req.method === "GET" && parsed.pathname === "/open" && targetUrl) {
       onUrl(targetUrl);
-      if (parsed.searchParams.get("focus") === "1") onFocus?.();
       res.writeHead(200);
       res.end("ok");
     } else {
