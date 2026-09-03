@@ -5,6 +5,7 @@ export interface ParsedReviewArgs {
   prUrl?: string;
   vcsType?: VcsSelection;
   useLocal: boolean;
+  vscode?: true;
 }
 
 export function parseReviewArgs(input: string | string[]): ParsedReviewArgs {
@@ -14,6 +15,7 @@ export function parseReviewArgs(input: string | string[]): ParsedReviewArgs {
 
   let vcsType: VcsSelection | undefined;
   let useLocal = true;
+  let vscode = false;
   const positional: string[] = [];
 
   for (const token of tokens) {
@@ -30,6 +32,9 @@ export function parseReviewArgs(input: string | string[]): ParsedReviewArgs {
       case "--no-local":
         useLocal = false;
         break;
+      case "vscode":
+        vscode = true;
+        break;
       default:
         positional.push(token);
         break;
@@ -41,6 +46,7 @@ export function parseReviewArgs(input: string | string[]): ParsedReviewArgs {
     prUrl: target && isReviewUrl(target) ? target : undefined,
     vcsType,
     useLocal,
+    ...(vscode ? { vscode: true } : {}),
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { createIpcServer } from "./ipc-server";
+import { IPC_PROBE_PATH, IPC_PROBE_RESPONSE, createIpcServer } from "./ipc-server";
 import type * as http from "http";
 
 describe("createIpcServer", () => {
@@ -18,7 +18,19 @@ describe("createIpcServer", () => {
     expect(result.port).toBeGreaterThan(0);
   });
 
-  it("calls onUrl for GET /open?url=...", async () => {
+  it("identifies itself through the probe endpoint", async () => {
+    const onUrl = mock((_url: string) => {});
+    const result = await createIpcServer(onUrl);
+    server = result.server;
+
+    const res = await fetch(`http://127.0.0.1:${result.port}${IPC_PROBE_PATH}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(IPC_PROBE_RESPONSE);
+    expect(onUrl).not.toHaveBeenCalled();
+  });
+
+  it("calls onOpen for GET /open?url=...", async () => {
     const onUrl = mock((_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
@@ -32,7 +44,7 @@ describe("createIpcServer", () => {
   });
 
   it("returns 404 for unknown paths", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -43,7 +55,7 @@ describe("createIpcServer", () => {
   });
 
   it("returns 404 when url param is missing", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -54,7 +66,7 @@ describe("createIpcServer", () => {
   });
 
   it("handles URLs with query parameters", async () => {
-    const onUrl = mock((_url: string) => {});
+    const onUrl = mock(async (_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 

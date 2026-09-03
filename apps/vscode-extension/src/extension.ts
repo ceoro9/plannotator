@@ -83,12 +83,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Start local IPC server to receive URLs from the router script.
   // Reuse the last port so restored terminals still have a valid PLANNOTATOR_VSCODE_PORT.
   const lastPort = context.workspaceState.get<number>("ipcPort");
-  const { server, port } = await createIpcServer((url) => {
-    openInPanel(url).catch((err) => {
-      log.error(`[open] failed: ${err}`);
-      vscode.window.showErrorMessage(`Plannotator: ${err}`);
-    });
-  }, lastPort);
+  const { server, port } = await createIpcServer(
+    (url) => {
+      openInPanel(url).catch((err) => {
+        log.error(`[open] failed: ${err}`);
+        vscode.window.showErrorMessage(`Plannotator: ${err}`);
+      });
+    },
+    lastPort,
+  );
   context.workspaceState.update("ipcPort", port);
   context.subscriptions.push({ dispose: () => server.close() });
 
