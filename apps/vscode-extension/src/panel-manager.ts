@@ -6,12 +6,46 @@ import { buildWrapperThemeScript } from "./vscode-theme";
 // bridge injected in cookie-proxy.ts).
 type ClipboardWriteMessage = { type: "plannotator-clipboard-write"; text: string };
 type ClipboardReadMessage = { type: "plannotator-clipboard-read"; id: number };
-type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage;
+type SendFeedbackResultMessage = {
+  type: "plannotator-send-feedback-result";
+  token: string;
+  id: string;
+  ok: boolean;
+  error?: string;
+};
+type SendFeedbackDiagnosticMessage = {
+  type: "plannotator-send-feedback-diagnostic";
+  token: string;
+  id: string;
+  stage: "wrapper-received" | "iframe-transport-received" | "iframe-callback-missing" | "iframe-received" | "iframe-replied" | "wrapper-replied";
+};
+type WebviewMessage = ClipboardWriteMessage | ClipboardReadMessage | SendFeedbackResultMessage | SendFeedbackDiagnosticMessage;
+
+type PendingFeedback = {
+  panel: vscode.WebviewPanel;
+  id: string;
+  resolve: (error?: string) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+function isSendFeedbackResultMessage(value: unknown): value is SendFeedbackResultMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  return message.type === "plannotator-send-feedback-result" &&
+    typeof message.token === "string" &&
+    typeof message.id === "string" &&
+    typeof message.ok === "boolean" &&
+    (message.ok || typeof message.error === "string");
+}
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
+  private panelTokens = new Map<vscode.WebviewPanel, string>();
   private activePanel: vscode.WebviewPanel | null = null;
+  private pendingFeedback: PendingFeedback | null = null;
   private extensionPath: string = "";
+
+  constructor(private readonly onFeedbackDiagnostic?: (stage: SendFeedbackDiagnosticMessage["stage"]) => void) {}
 
   setExtensionPath(p: string): void {
     this.extensionPath = p;
@@ -21,6 +55,7 @@ export class PanelManager {
     const resolved = await vscode.env.asExternalUri(vscode.Uri.parse(url));
     const resolvedUrl = resolved.toString();
 
+    const token = crypto.randomUUID();
     const panel = vscode.window.createWebviewPanel(
       "plannotator",
       "Plannotator",
@@ -31,7 +66,7 @@ export class PanelManager {
       path.join(this.extensionPath, "images", "icon.png"),
     );
     const origin = `${resolved.scheme}://${resolved.authority}`;
-    panel.webview.html = getHtml(resolvedUrl, origin);
+    panel.webview.html = getHtml(resolvedUrl, origin, token);
 
     const messageSub = panel.webview.onDidReceiveMessage(async (raw: unknown) => {
       const msg = raw as WebviewMessage;
@@ -40,10 +75,21 @@ export class PanelManager {
       } else if (msg.type === "plannotator-clipboard-read") {
         const text = await vscode.env.clipboard.readText();
         panel.webview.postMessage({ type: "plannotator-clipboard-data", id: msg.id, text });
+      } else if (isSendFeedbackResultMessage(msg)) {
+        const pending = this.pendingFeedback;
+        if (msg.token === token && pending?.panel === panel && pending.id === msg.id) {
+          this.clearPending(msg.ok ? undefined : msg.error);
+        }
+      } else if (msg.type === "plannotator-send-feedback-diagnostic") {
+        const pending = this.pendingFeedback;
+        if (msg.token === token && pending?.panel === panel && pending.id === msg.id) {
+          this.onFeedbackDiagnostic?.(msg.stage);
+        }
       }
     });
 
     this.panels.add(panel);
+    this.panelTokens.set(panel, token);
     this.activePanel = panel;
     const viewStateSub = panel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) this.activePanel = panel;
@@ -52,6 +98,10 @@ export class PanelManager {
       messageSub.dispose();
       viewStateSub.dispose();
       this.panels.delete(panel);
+      this.panelTokens.delete(panel);
+      if (this.pendingFeedback?.panel === panel) {
+        this.clearPending("The review panel closed before feedback was sent.");
+      }
       if (this.activePanel === panel) this.activePanel = this.panels.values().next().value ?? null;
     });
     return panel;
@@ -63,10 +113,34 @@ export class PanelManager {
 
   async sendFeedback(): Promise<string | undefined> {
     const panel = this.activePanel;
-    if (!panel) return "No active review session.";
-    if (!(await panel.webview.postMessage({ type: "plannotator-send-feedback" }))) {
-      return "The active review panel is unavailable.";
+    const token = panel && this.panelTokens.get(panel);
+    if (!panel || !token || !this.panels.has(panel)) return "No active review session.";
+    if (this.pendingFeedback) return "A review submission is already in progress.";
+
+    const id = crypto.randomUUID();
+    const result = new Promise<string | undefined>((resolve) => {
+      const timer = setTimeout(() => {
+        this.clearPending("Confirmation timed out; feedback may still be sent.");
+      }, 15_000);
+      this.pendingFeedback = { panel, id, resolve, timer };
+    });
+    try {
+      if (await panel.webview.postMessage({ type: "plannotator-send-feedback", token, id })) {
+        return result;
+      }
+    } catch {
+      // Treat a rejected webview post the same as an unavailable panel.
     }
+    this.clearPending();
+    return "The active review panel is unavailable.";
+  }
+
+  private clearPending(error?: string): void {
+    const pending = this.pendingFeedback;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingFeedback = null;
+    pending.resolve(error);
   }
 
   closeAll(): void {
@@ -76,7 +150,7 @@ export class PanelManager {
   }
 }
 
-function getHtml(url: string, origin: string): string {
+function getHtml(url: string, origin: string, token: string): string {
   const themeScript = buildWrapperThemeScript();
   return `<!DOCTYPE html>
 <html lang="en">
@@ -98,12 +172,27 @@ function getHtml(url: string, origin: string): string {
       var ready = false;
       var reloads = 0;
       var vscodeApi = acquireVsCodeApi();
+      var feedbackToken = ${JSON.stringify(token)};
       window.addEventListener("message", function(e) {
         var d = e.data;
         if (d === "plannotator-ready") { ready = true; return; }
-        if (d && d.type === "plannotator-send-feedback") {
+        if (d && d.type === "plannotator-send-feedback" && d.token === feedbackToken && typeof d.id === "string") {
           var feedbackFrame = document.getElementById("pn-frame");
-          if (feedbackFrame && feedbackFrame.contentWindow) feedbackFrame.contentWindow.postMessage(d, ${JSON.stringify(origin)});
+          vscodeApi.postMessage({type:"plannotator-send-feedback-diagnostic",token:d.token,id:d.id,stage:"wrapper-received"});
+          if (feedbackFrame && feedbackFrame.contentWindow) feedbackFrame.contentWindow.postMessage(d, "*");
+          return;
+        }
+        if (d && d.type === "plannotator-send-feedback-diagnostic" && d.token === feedbackToken && typeof d.id === "string") {
+          var diagnosticFrame = document.getElementById("pn-frame");
+          if (diagnosticFrame && e.source === diagnosticFrame.contentWindow) vscodeApi.postMessage(d);
+          return;
+        }
+        if (d && d.type === "plannotator-send-feedback-result" && d.token === feedbackToken && typeof d.id === "string" && typeof d.ok === "boolean") {
+          var resultFrame = document.getElementById("pn-frame");
+          if (resultFrame && e.source === resultFrame.contentWindow) {
+            vscodeApi.postMessage({type:"plannotator-send-feedback-diagnostic",token:d.token,id:d.id,stage:"wrapper-replied"});
+            vscodeApi.postMessage(d);
+          }
           return;
         }
         if (d && d.type === "plannotator-keydown") {

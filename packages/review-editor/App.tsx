@@ -3486,10 +3486,10 @@ const ReviewApp: React.FC = () => {
   }, [totalAnnotationCount, feedbackMarkdown]);
 
   // Send feedback to OpenCode via API
-  const handleSendFeedback = useCallback(async () => {
+  const handleSendFeedback = useCallback(async (): Promise<string | undefined> => {
     if (totalAnnotationCount === 0) {
       setShowNoAnnotationsDialog(true);
-      return;
+      return "There are no annotations to send.";
     }
     setIsSendingFeedback(true);
     try {
@@ -3509,25 +3509,32 @@ const ReviewApp: React.FC = () => {
       });
       if (res.ok) {
         setSubmitted('feedback');
-      } else {
-        throw new Error('Failed to send');
+        return;
       }
+      throw new Error('Failed to send');
     } catch (err) {
       console.error('Failed to send feedback:', err);
       setCopyFeedback('Failed to send');
       setTimeout(() => setCopyFeedback(null), 2000);
       setIsSendingFeedback(false);
+      return err instanceof Error ? err.message : 'Failed to send feedback.';
     }
   }, [totalAnnotationCount, feedbackMarkdown, allAnnotations, getDraftGeneration]);
 
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== window.parent || event.data?.type !== 'plannotator-send-feedback') return;
-      void handleSendFeedback();
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [handleSendFeedback]);
+  const sendFeedbackFromVSCode = async (message: { token?: unknown; id?: unknown }) => {
+    if (typeof message.token !== 'string' || typeof message.id !== 'string') return;
+    window.parent.postMessage({ type: 'plannotator-send-feedback-diagnostic', token: message.token, id: message.id, stage: 'iframe-received' }, '*');
+    const error = await handleSendFeedback();
+    window.parent.postMessage({ type: 'plannotator-send-feedback-diagnostic', token: message.token, id: message.id, stage: 'iframe-replied' }, '*');
+    window.parent.postMessage({
+      type: 'plannotator-send-feedback-result',
+      token: message.token,
+      id: message.id,
+      ok: !error,
+      ...(error && { error }),
+    }, '*');
+  };
+  (window as typeof window & { __PLANNOTATOR_SEND_FEEDBACK__?: typeof sendFeedbackFromVSCode }).__PLANNOTATOR_SEND_FEEDBACK__ = sendFeedbackFromVSCode;
 
   // Exit review session without sending any feedback
   const handleExit = useCallback(async () => {

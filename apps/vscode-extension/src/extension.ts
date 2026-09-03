@@ -42,7 +42,7 @@ const COOKIE_KEY = "plannotator-cookies";
 const log = vscode.window.createOutputChannel("Plannotator", { log: true });
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const panelManager = new PanelManager();
+  const panelManager = new PanelManager((stage) => log.info(`[send-feedback] ${stage}`));
   panelManager.setExtensionPath(context.extensionPath);
   context.subscriptions.push(
     vscode.commands.registerCommand(

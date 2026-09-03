@@ -288,6 +288,7 @@ function injectScript(html: string, savedCookies: string): string {
       setTimeout(sc,500);setInterval(sc,2000);
       var ci=setInterval(function(){if(document.body&&document.body.textContent.indexOf("Your response has been sent")!==-1){clearInterval(ci);sc();fetch("/___ext/close",{method:"POST"});}},500);
       try{window.parent.postMessage("plannotator-ready","*");}catch(e){}
+      window.addEventListener("message",function(e){var d=e.data;if(d&&d.type==="plannotator-send-feedback"&&typeof d.token==="string"&&typeof d.id==="string"){window.parent.postMessage({type:"plannotator-send-feedback-diagnostic",token:d.token,id:d.id,stage:"iframe-transport-received"},"*");if(window.__PLANNOTATOR_SEND_FEEDBACK__)window.__PLANNOTATOR_SEND_FEEDBACK__(d);else window.parent.postMessage({type:"plannotator-send-feedback-diagnostic",token:d.token,id:d.id,stage:"iframe-callback-missing"},"*");}});
       // Clipboard bridge: inside a nested cross-origin webview iframe the
       // document never holds focus, so the async Clipboard API is rejected and
       // native copy/cut/paste events never fire. Route reads and writes through
