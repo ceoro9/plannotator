@@ -11,7 +11,7 @@ describe("createIpcServer", () => {
   });
 
   it("starts on a random port", async () => {
-    const onUrl = mock(async (_url: string) => {});
+    const onUrl = mock((_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -19,7 +19,7 @@ describe("createIpcServer", () => {
   });
 
   it("identifies itself through the probe endpoint", async () => {
-    const onUrl = mock(async (_url: string) => {});
+    const onUrl = mock((_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
@@ -31,7 +31,7 @@ describe("createIpcServer", () => {
   });
 
   it("calls onOpen for GET /open?url=...", async () => {
-    const onUrl = mock(async (_url: string) => {});
+    const onUrl = mock((_url: string) => {});
     const result = await createIpcServer(onUrl);
     server = result.server;
 
