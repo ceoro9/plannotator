@@ -41,6 +41,7 @@
     "plannotator-events.ts",
     "server.ts",
     "tool-scope.ts",
+    "vscode-ipc.ts",
     "config.ts",
     "plannotator.json",
     "server/",
