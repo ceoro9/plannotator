@@ -6,6 +6,8 @@
 url="$1"
 [ -z "$url" ] && exit 0
 [ -z "$PLANNOTATOR_VSCODE_PORT" ] && exit 1
+[ -z "$PLANNOTATOR_VSCODE_TOKEN" ] && exit 1
 
 curl -s -G "http://127.0.0.1:${PLANNOTATOR_VSCODE_PORT}/open" \
-  --data-urlencode "url=${url}" >/dev/null 2>&1
+  --data-urlencode "url=${url}" \
+  --data-urlencode "token=${PLANNOTATOR_VSCODE_TOKEN}" >/dev/null 2>&1

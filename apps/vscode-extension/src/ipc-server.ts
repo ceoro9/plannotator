@@ -1,18 +1,44 @@
 import * as http from "http";
 
+export const IPC_PROBE_PATH = "/__plannotator_vscode_probe__";
+export const IPC_PROBE_RESPONSE = "plannotator-vscode-ipc";
+
+export type IpcIdentity = { workspacePaths: string[]; token: string };
+
 /**
  * Lightweight HTTP server on localhost for receiving URLs from the router script.
  * Needed because vscode:// URI handlers don't work reliably on Linux.
  */
 export function createIpcServer(
   onUrl: (url: string) => void,
+  identity: IpcIdentity,
   preferredPort?: number,
 ): Promise<{ server: http.Server; port: number }> {
   const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
     const parsed = new globalThis.URL(req.url!, "http://localhost");
     const targetUrl = parsed.searchParams.get("url");
 
-    if (req.method === "GET" && parsed.pathname === "/open" && targetUrl) {
+    if (req.method === "GET" && parsed.pathname === IPC_PROBE_PATH) {
+      if (parsed.searchParams.get("token") !== identity.token) {
+        res.writeHead(404);
+        res.end("not found");
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          protocol: IPC_PROBE_RESPONSE,
+          workspacePaths: identity.workspacePaths,
+        }),
+      );
+      return;
+    }
+    if (
+      req.method === "GET" &&
+      parsed.pathname === "/open" &&
+      targetUrl &&
+      parsed.searchParams.get("token") === identity.token
+    ) {
       onUrl(targetUrl);
       res.writeHead(200);
       res.end("ok");
@@ -22,7 +48,9 @@ export function createIpcServer(
     }
   };
 
-  function listen(port: number): Promise<{ server: http.Server; port: number }> {
+  function listen(
+    port: number,
+  ): Promise<{ server: http.Server; port: number }> {
     return new Promise((resolve, reject) => {
       const server = http.createServer(handler);
       server.listen(port, "127.0.0.1", () => {
